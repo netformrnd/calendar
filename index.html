@@ -69,7 +69,7 @@
     .sr-info { flex:1; }
     .sr-name { font-size:1.25rem; font-weight:800; color:#0F172A; margin-bottom:4px; }
     .sr-detail { font-size:0.92rem; color:#64748B; }
-    .sr-badge { display:inline-flex; padding:12px 28px; border-radius:28px; font-size:1.2rem; font-weight:900; flex-shrink:0; letter-spacing:0.5px; }
+    .sr-badge { display:inline-flex; padding:10px 22px; border-radius:28px; font-size:0.92rem; font-weight:600; flex-shrink:0; letter-spacing:0.3px; }
     .sr-badge.working { background:#D1FAE5; color:#065F46; }
     .sr-badge.vac { background:rgba(180,206,249,.35); color:#1E40AF; }
     .sr-badge.half-am,.sr-badge.half-pm { background:rgba(250,224,160,.4); color:#92400E; }
@@ -86,6 +86,19 @@
     .sr-cal-hint svg { width:16px; height:16px; color:#B4CEF9; flex-shrink:0; fill:none; stroke:currentColor; stroke-width:2; stroke-linecap:round; stroke-linejoin:round; }
     .sr-cal-hint span { font-size:0.78rem; color:#475569; font-weight:600; }
     .sr-cal-hint .arrow { color:#B4CEF9; margin-left:auto; }
+
+    /* ── 토스트 팝업 ── */
+    .toast-pop{position:fixed;top:50%;left:50%;transform:translate(-50%,-50%) scale(0.8);
+      background:#fff;border-radius:16px;padding:32px 36px;text-align:center;z-index:10002;
+      box-shadow:0 12px 40px rgba(0,0,0,.18);opacity:0;pointer-events:none;transition:all .25s ease;}
+    .toast-pop.show{opacity:1;transform:translate(-50%,-50%) scale(1);pointer-events:auto;}
+    .toast-pop .tp-icon{width:48px;height:48px;border-radius:50%;background:#D1FAE5;
+      display:inline-flex;align-items:center;justify-content:center;margin-bottom:12px;}
+    .toast-pop .tp-icon svg{width:26px;height:26px;color:#059669;stroke:currentColor;fill:none;stroke-width:2.5;stroke-linecap:round;stroke-linejoin:round;}
+    .toast-pop .tp-msg{font-size:0.95rem;font-weight:700;color:#0F172A;margin-bottom:4px;}
+    .toast-pop .tp-sub{font-size:0.78rem;color:#64748B;font-weight:500;}
+    .toast-dim{position:fixed;inset:0;background:rgba(0,0,0,.25);z-index:10001;opacity:0;pointer-events:none;transition:opacity .25s;}
+    .toast-dim.show{opacity:1;pointer-events:auto;}
 
     /* ── 레이아웃 ── */
     .layout-side { display:flex; min-height:0; }
@@ -564,6 +577,7 @@
       <button class="btn-cancel" onclick="closeAdd()">취소</button>
       <button class="btn-save" onclick="saveManual()">등록</button>
     </div>
+    <div id="manualList" style="margin-top:14px;max-height:150px;overflow-y:auto;"></div>
     <div style="margin-top:14px;padding:12px 14px;background:#F0F4FF;border-radius:8px;border:1px solid #DBEAFE;">
       <div style="font-size:0.75rem;font-weight:600;color:#1E40AF;margin-bottom:4px;">ℹ️ 안내</div>
       <div style="font-size:0.72rem;color:#475569;line-height:1.5;">서비스운영1팀 외근은 <a href="https://schedules-cip.pages.dev/" target="_blank" style="color:#3B82F6;font-weight:600;text-decoration:none;">영업관리</a>에서 자동연동됩니다.<br>다른 부서는 여기서 직접 등록해 주세요.</div>
@@ -589,12 +603,19 @@
   </div>
 </div>
 
+<div class="toast-dim" id="toastDim"></div>
+<div class="toast-pop" id="toastPop">
+  <div class="tp-icon"><svg viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg></div>
+  <div class="tp-msg" id="toastMsg">등록 완료!</div>
+  <div class="tp-sub" id="toastSub"></div>
+</div>
+
 <script>
 /* ===== Firebase Config ===== */
 const FB_CONFIG={apiKey:"AIzaSyCzngaCcenhH1tmZ7syugpI3H1wYBVhiJQ",authDomain:"test-168a4.firebaseapp.com",databaseURL:"https://test-168a4-default-rtdb.asia-southeast1.firebasedatabase.app",projectId:"test-168a4",storageBucket:"test-168a4.firebasestorage.app",messagingSenderId:"955362696992",appId:"1:955362696992:web:234b098db17412be27c145"};
 const MANUAL_KEY='company_outside_manual';
 
-let cY, cM, userMap={}, vacData=[], salesOut=[], manualOut=[], holidayMap={};
+let cY, cM, userMap={}, vacData=[], salesOut=[], manualOut=[], holidayMap={}, editingId=null;
 let curFilter='all', nameQ='', selDate=null, db=null;
 let todayVacList=[], todaySalesOut=[], todayManualOut=[];
 let ptCache=null, brCache=null, perCache=null; // PT/브리핑/개인일정 전체 캐시
@@ -618,13 +639,17 @@ async function loadData(){
       db.ref('/hiworks_vacation_sync/users').once('value'),
       db.ref('/hiworks_vacation_sync/holidays/'+key).once('value'),
       db.ref('/hiworks_vacation_sync/meta/lastSync').once('value'),
-      db.ref('/sq_vc/leaves').once('value')
+      db.ref('/sq_vc/leaves').once('value'),
+      db.ref('/manual_outside').once('value')
     ];
     if(todayKey!==key) corePromises.push(db.ref('/hiworks_vacation_sync/data/'+todayKey).once('value'));
     const coreResults=await Promise.all(corePromises);
-    const[vacSnap,userSnap,holSnap,metaSnap,sqVcSnap]=coreResults;
+    const[vacSnap,userSnap,holSnap,metaSnap,sqVcSnap,manualSnap]=coreResults;
 
     vacData=vacSnap.val()||[]; userMap=userSnap.val()||{};
+    // 수동 외근 Firebase에서 로드
+    const manualData=manualSnap.val()||{};
+    manualOut=Object.entries(manualData).map(([k,v])=>({...v,id:v.id||k}));
     holidayMap=holSnap.val()||{};
     const mp=`${cY}-${p2(cM)}`;
 
@@ -643,8 +668,8 @@ async function loadData(){
 
     // 오늘 휴가 데이터
     let todayVacSource=vacData;
-    if(todayKey!==key&&coreResults[5]){
-      todayVacSource=coreResults[5].val()||[];
+    if(todayKey!==key&&coreResults[6]){
+      todayVacSource=coreResults[6].val()||[];
       // 다른 월 조회 시에도 sq_vc 데이터를 오늘 휴가에 포함
       Object.entries(sqVcData).forEach(([date,arr])=>{
         if(!Array.isArray(arr)||date!==todayStr)return;
@@ -680,18 +705,26 @@ async function loadData(){
     salesOut=[];
     Object.values(ptData).forEach(i=>{if(i.date&&i.date.startsWith(mp)&&i.ptAssignee)salesOut.push({date:i.date,name:i.ptAssignee,src:'sales',time:i.time||'',siteName:i.siteName||'',outType:'PT'});});
     Object.values(brData).forEach(i=>{if(i.date&&i.date.startsWith(mp)&&i.assignee)salesOut.push({date:i.date,name:i.assignee,src:'sales',time:i.time||'',siteName:i.siteName||'',outType:'브리핑'});});
-    // 개인일정 (세미나/미팅 등 - 연차 제외)
+    // 개인일정 (세미나/미팅 등 - 연차/휴가 제외)
     Object.values(perData).forEach(i=>{
       if(!i.date||!i.date.startsWith(mp))return;
       const title=i.title||'';
-      if(title.includes('연차'))return; // 연차는 휴가로 처리되므로 제외
+      if(title.includes('연차')||title.includes('휴가'))return;
       const name=(i.assignees&&i.assignees[0])||'';
       if(!name)return;
-      let outType='세미나';
+      let outType='현장답사';
       if(title.includes('미팅'))outType='미팅';
       else if(title.includes('계약'))outType='계약';
+      else if(title.includes('세미나'))outType='세미나';
+      else if(title.includes('현설'))outType='현설';
       let site=i.siteName||i.location||'';
-      if(!site&&title.includes('_'))site=title.substring(title.indexOf('_')+1).replace(/\s*(세미나|미팅|계약)$/,'').trim();
+      if(!site){
+        // title에서 장소 추출: "장소명 현장답사", "이름_장소" 등
+        let t=title;
+        if(t.includes('_'))t=t.substring(t.indexOf('_')+1);
+        site=t.replace(/\s*(세미나|미팅|계약|현장답사|현설|PT|브리핑)$/,'').trim();
+        if(site===name)site=''; // 이름만 남으면 제거
+      }
       salesOut.push({date:i.date,name:name,src:'sales',time:i.time||'',siteName:site,outType:outType});
     });
     todaySalesOut=[];
@@ -701,14 +734,21 @@ async function loadData(){
     Object.values(perData).forEach(i=>{
       if(i.date!==todayStr)return;
       const title=i.title||'';
-      if(title.includes('연차'))return;
+      if(title.includes('연차')||title.includes('휴가'))return;
       const name=(i.assignees&&i.assignees[0])||'';
       if(!name)return;
-      let outType='세미나';
+      let outType='현장답사';
       if(title.includes('미팅'))outType='미팅';
       else if(title.includes('계약'))outType='계약';
+      else if(title.includes('세미나'))outType='세미나';
+      else if(title.includes('현설'))outType='현설';
       let site=i.siteName||i.location||'';
-      if(!site&&title.includes('_'))site=title.substring(title.indexOf('_')+1).replace(/\s*(세미나|미팅|계약)$/,'').trim();
+      if(!site){
+        let t=title;
+        if(t.includes('_'))t=t.substring(t.indexOf('_')+1);
+        site=t.replace(/\s*(세미나|미팅|계약|현장답사|현설|PT|브리핑)$/,'').trim();
+        if(site===name)site='';
+      }
       todaySalesOut.push({date:todayStr,name:name,src:'sales',time:i.time||'',siteName:site,outType:outType});
     });
 
@@ -722,11 +762,23 @@ async function loadData(){
 function fmtDate(d){return `${d.getFullYear()}-${p2(d.getMonth()+1)}-${p2(d.getDate())}`;}
 function p2(n){return String(n).padStart(2,'0');}
 function showLoading(s){document.getElementById('loading').style.display=s?'flex':'none';}
-function outTypeCls(t){if(t==='PT')return'pt';if(t==='브리핑')return'br';if(t==='세미나')return'sm';if(t==='미팅')return'mt';if(t==='계약')return'ct';return'br';}
+function outTypeCls(t){if(t==='PT')return'pt';if(t==='브리핑')return'br';if(t==='세미나')return'sm';if(t==='미팅')return'mt';if(t==='계약')return'ct';if(t==='현설')return'pt';if(t==='현장답사')return'br';return'br';}
 
-/* ===== 수동 외근 ===== */
-function loadManual(){try{manualOut=JSON.parse(localStorage.getItem(MANUAL_KEY)||'[]');}catch{manualOut=[];}}
-function saveManualStore(){localStorage.setItem(MANUAL_KEY,JSON.stringify(manualOut));}
+/* ===== 수동 외근 (Firebase 공유) ===== */
+function loadManual(){
+  if(!db)return;
+  db.ref('/manual_outside').once('value').then(snap=>{
+    const data=snap.val()||{};
+    manualOut=Object.entries(data).map(([k,v])=>({...v,id:v.id||k}));
+    showML();render();updateSidePanel();if(selDate)selectDate(selDate);
+  }).catch(()=>{manualOut=[];});
+}
+function saveManualStore(){
+  if(!db)return;
+  const obj={};
+  manualOut.forEach(m=>{obj[m.id]=m;});
+  db.ref('/manual_outside').set(obj);
+}
 function initTimeSelects(){
   const opts=['<option value="">선택 안함</option>'];
   for(let h=7;h<=21;h++) opts.push(`<option value="${p2(h)}:00">${p2(h)}:00</option>`);
@@ -802,6 +854,23 @@ function initDp(dateStr){
   document.getElementById('dpCal').classList.remove('open');
   document.getElementById('dpToggle').classList.remove('active');
 }
+function showToast(msg,sub,duration){
+  try{
+    const dim=document.getElementById('toastDim');
+    const pop=document.getElementById('toastPop');
+    if(!dim||!pop){console.error('toast elements not found');return;}
+    document.getElementById('toastMsg').textContent=msg||'등록 완료!';
+    document.getElementById('toastSub').textContent=sub||'';
+    // 이전 상태 초기화 후 다음 프레임에서 show
+    dim.classList.remove('show');pop.classList.remove('show');
+    requestAnimationFrame(()=>{
+      requestAnimationFrame(()=>{
+        dim.classList.add('show');pop.classList.add('show');
+        setTimeout(()=>{dim.classList.remove('show');pop.classList.remove('show');},duration||1800);
+      });
+    });
+  }catch(e){console.error('showToast error:',e);}
+}
 function saveManual(){
   const name=document.getElementById('mN').value.trim();
   const date=document.getElementById('mDInput').value.trim();
@@ -811,19 +880,72 @@ function saveManual(){
   const siteName=document.getElementById('mS').value.trim();
   const memo=document.getElementById('mM').value.trim();
   if(!name||!/^\d{4}-\d{2}-\d{2}$/.test(date)){alert('이름과 날짜를 입력하세요.');return;}
-  manualOut.push({id:Date.now(),name,date,time,siteName,memo});saveManualStore();
-  document.getElementById('mN').value='';initDp(selDate||fmtDate(new Date()));document.getElementById('mTS').value='';document.getElementById('mTE').value='';document.getElementById('mS').value='';document.getElementById('mM').value='';
-  showML();render();updateSidePanel();if(selDate)selectDate(selDate);
+  const wasEditing=editingId!==null;
+  const toastMsg=wasEditing?'수정이 완료되었습니다':'등록이 완료되었습니다';
+  const timeInfo=time?` (${time})`:'';
+  const toastSub=name+' · '+date+timeInfo;
+  try{
+    if(wasEditing){
+      const idx=manualOut.findIndex(m=>m.id===editingId);
+      if(idx>=0) manualOut[idx]={id:editingId,name,date,time,siteName,memo};
+      editingId=null;
+    } else {
+      manualOut.push({id:Date.now(),name,date,time,siteName,memo});
+    }
+    saveManualStore();
+  }catch(e){console.error('saveManual error:',e);}
+  try{
+    document.getElementById('mN').value='';
+    document.getElementById('mTS').value='';
+    document.getElementById('mTE').value='';
+    document.getElementById('mS').value='';
+    document.getElementById('mM').value='';
+    closeAdd();
+  }catch(e){console.error('closeAdd error:',e);}
+  try{render();updateSidePanel();if(selDate)selectDate(selDate);}catch(e){console.error('render error:',e);}
+  showToast(toastMsg,toastSub);
 }
-function delManual(id){manualOut=manualOut.filter(m=>m.id!==id);saveManualStore();showML();render();updateSidePanel();if(selDate)selectDate(selDate);}
+function delManual(id){manualOut=manualOut.filter(m=>String(m.id)!==String(id));saveManualStore();showML();render();updateSidePanel();if(selDate)selectDate(selDate);}
+function editManual(id){
+  const m=manualOut.find(x=>x.id===id);
+  if(!m)return;
+  // 날짜 상세 팝업 닫기
+  document.getElementById('outModal').style.display='none';
+  // 모달 직접 열기 (openAddModal 거치지 않음)
+  editingId=id;
+  document.getElementById('addModal').classList.add('show');
+  // 시간 select 옵션 먼저 빌드
+  initTimeSelects();
+  // 기존 데이터 채우기
+  document.getElementById('mN').value=m.name||'';
+  initDp(m.date||fmtDate(new Date()));
+  document.getElementById('mS').value=m.siteName||'';
+  document.getElementById('mM').value=m.memo||'';
+  // 시간 채우기 (initTimeSelects 이후)
+  if(m.time&&m.time.includes('~')){
+    const[s,e]=m.time.split('~');
+    document.getElementById('mTS').value=s.trim();
+    document.getElementById('mTE').value=e.trim();
+  } else if(m.time){
+    document.getElementById('mTS').value=m.time.trim();
+    document.getElementById('mTE').value='';
+  } else {
+    document.getElementById('mTS').value='';
+    document.getElementById('mTE').value='';
+  }
+  // 수정 모드 UI
+  document.getElementById('addModal').querySelector('h3').textContent='외근 수정';
+  document.getElementById('addModal').querySelector('.btn-save').textContent='수정';
+  showML();
+}
 function showML(){
   const el=document.getElementById('manualList'),mp=`${cY}-${p2(cM)}`;
   const items=manualOut.filter(m=>m.date.startsWith(mp));
   if(!items.length){el.innerHTML='<div style="text-align:center;color:#94A3B8;padding:16px;font-size:0.8rem;">등록된 외근이 없습니다.</div>';return;}
-  el.innerHTML=items.sort((a,b)=>a.date.localeCompare(b.date)).map(m=>`<div class="mi"><span>${m.date.substring(5)}${m.time?' '+m.time:''} ${m.name}${m.siteName?' · '+m.siteName:''}${m.memo?' ('+m.memo+')':''}</span><button class="del" onclick="delManual(${m.id})">&times;</button></div>`).join('');
+  el.innerHTML=items.sort((a,b)=>a.date.localeCompare(b.date)).map(m=>`<div class="mi"><span>${m.date.substring(5)}${m.time?' '+m.time:''} ${m.name}${m.siteName?' · '+m.siteName:''}${m.memo?' ('+m.memo+')':''}</span></div>`).join('');
 }
-function openAddModal(){document.getElementById('addModal').classList.add('show');initDp(selDate||fmtDate(new Date()));initTimeSelects();showML();}
-function closeAdd(){document.getElementById('addModal').classList.remove('show');}
+function openAddModal(){editingId=null;document.getElementById('addModal').classList.add('show');document.getElementById('addModal').querySelector('h3').textContent='외근 등록';document.getElementById('addModal').querySelector('.btn-save').textContent='등록';initDp(selDate||fmtDate(new Date()));initTimeSelects();showML();}
+function closeAdd(){editingId=null;document.getElementById('addModal').querySelector('h3').textContent='외근 등록';document.getElementById('addModal').querySelector('.btn-save').textContent='등록';document.getElementById('addModal').classList.remove('show');}
 
 /* ===== 이벤트 분류 ===== */
 function evCls(item){
@@ -1168,33 +1290,18 @@ function updateSidePanel(targetDate){
   // 연차 카드 - 이름별 합산 시간 표시
   // 같은 이름의 반차 합산자는 시간을 합쳐서 표시
   function vacListHtml(items){
-    const byNm={};
-    items.forEach(v=>{
-      const nm=vacName(v);
-      if(!byNm[nm])byNm[nm]={starts:[],ends:[],isDay:false};
-      if(v.type==='days'){byNm[nm].isDay=true;}
-      else if(v.type==='hours'&&v.start_time&&v.end_time){
-        byNm[nm].starts.push(v.start_time);
-        byNm[nm].ends.push(v.end_time);
-      }
-    });
-    return Object.keys(byNm).map(nm=>{
-      const info=byNm[nm];
-      let dt='종일';
-      if(!info.isDay&&info.starts.length){
-        const minS=info.starts.sort()[0].substring(0,5);
-        const maxE=info.ends.sort().reverse()[0].substring(0,5);
-        dt=minS+'~'+maxE;
-      }
-      return `<div class="sd-p"><span class="nm">${nm}</span><span class="dt">${dt}</span></div>`;
+    const names=new Set();
+    items.forEach(v=>names.add(vacName(v)));
+    return [...names].map(nm=>{
+      return `<div class="sd-p"><span class="nm">${nm}</span><span class="dt">종일</span></div>`;
     }).join('');
   }
   const vacUniqueN=uniqueNames(vacFull,vacName);
-  html+=`<div class="sd-card"><div class="sd-ch open vh"><span class="sd-dot vac"></span><span class="sd-title">연차</span><span class="sd-cnt">${vacUniqueN}명</span></div><div class="sd-list">${vacFull.length?vacListHtml(vacFull):'<div class="sd-p" style="color:#94A3B8;font-size:0.75rem;">없음</div>'}</div></div>`;
+  html+=`<div class="sd-card"><div class="sd-ch open vh"><span class="sd-dot vac"></span><span class="sd-title">연차</span></div><div class="sd-list">${vacFull.length?vacListHtml(vacFull):'<div class="sd-p" style="color:#94A3B8;font-size:0.75rem;">없음</div>'}</div></div>`;
 
-  // 반차 카드 - 고유 인원수
+  // 반차 카드
   const halfUniqueN=uniqueNames(allHalf,vacName);
-  html+=`<div class="sd-card"><div class="sd-ch open hh"><span class="sd-dot half"></span><span class="sd-title">반차</span><span class="sd-cnt">${halfUniqueN}명</span></div><div class="sd-list">`;
+  html+=`<div class="sd-card"><div class="sd-ch open hh"><span class="sd-dot half"></span><span class="sd-title">반차</span></div><div class="sd-list">`;
   if(halfAM.length||halfPM.length){
     html+=`<div class="sd-sub">오전</div>`;
     html+=halfAM.length?pList(halfAM,vacName,halfDetail):'<div class="sd-p" style="color:#CBD5E1;font-size:0.75rem;padding-left:6px;">없음</div>';
@@ -1215,12 +1322,11 @@ function updateSidePanel(targetDate){
       const typeLabel=isSales?(o.outType||'영업'):'';
       const timeBadge=o.time&&o.time!=='미정'?`<span class="out-time">${o.time}</span>`:'';
       const site=o.siteName||(o.memo||'');
-      const delBtn=isManual?`<button class="out-del-btn" onclick="event.stopPropagation();delManual(${o.id})" title="삭제">&times;</button>`:'';
-      return `<div class="sd-p out-detail" style="${isManual?'position:relative;':''}"><div class="out-row"><span class="nm">${o.name}</span>${timeBadge}${typeLabel?`<span class="out-type ${typeCls}">${typeLabel}</span>`:''}</div>${site?`<div class="out-site">${site}</div>`:''}${delBtn}</div>`;
+      return `<div class="sd-p out-detail"><div class="out-row"><span class="nm">${o.name}</span>${timeBadge}${typeLabel?`<span class="out-type ${typeCls}">${typeLabel}</span>`:''}</div>${site?`<div class="out-site">${site}</div>`:''}</div>`;
     }).join('');
   }
   const outUniqueN=new Set(allOut.map(o=>o.name)).size;
-  html+=`<div class="sd-card"><div class="sd-ch open oh"><span class="sd-dot out"></span><span class="sd-title">외근</span><span class="sd-cnt">${outUniqueN}명</span></div><div class="sd-list">${outListHtml(allOut)}</div></div>`;
+  html+=`<div class="sd-card"><div class="sd-ch open oh"><span class="sd-dot out"></span><span class="sd-title">외근</span></div><div class="sd-list">${outListHtml(allOut)}</div></div>`;
 
   panel.innerHTML=html;
 }
@@ -1239,7 +1345,7 @@ function openOutModal(ds){
   // 헤더: 날짜 뱃지 + 타이틀
   document.getElementById('outModalHeader').innerHTML=
     `<div class="om-date-badge"><div class="om-day">${d.getDate()}</div><div class="om-dow">${dayNames[d.getDay()]}요일</div></div>`+
-    `<div class="om-title-area"><div class="om-title">${d.getFullYear()}년 ${d.getMonth()+1}월 ${d.getDate()}일 외근 현황</div><div class="om-count">총 ${outEvs.length}명</div></div>`;
+    `<div class="om-title-area"><div class="om-title">${d.getFullYear()}년 ${d.getMonth()+1}월 ${d.getDate()}일 외근 현황</div></div>`;
   let html='';
   if(!outEvs.length){html='<div style="text-align:center;color:#94A3B8;padding:32px 0;font-size:0.9rem;">외근자가 없습니다.</div>';}
   else{
@@ -1251,8 +1357,9 @@ function openOutModal(ds){
       const site=o.siteName||(o.memo||'');
       const initial=o.name?o.name.charAt(0):'';
       const isManual=o.src==='manual';
-      const delBtn=isManual?`<button class="om-del-btn" onclick="delManual(${o.id});openOutModal('${ds}')" title="삭제">&times;</button>`:'';
-      html+=`<div class="om-item-lg" style="${isManual?'position:relative;':''}"><div class="om-avatar">${initial}</div><div class="om-detail"><div class="om-nm-lg">${o.name}</div>${site?`<div class="om-site-lg">${site}</div>`:''}<div class="om-meta-lg">${tm?`<span>${tm}</span>`:''}${typeLabel?`<span class="om-badge-lg ${typeCls}">${typeLabel}</span>`:''}${o.memo&&o.src==='manual'?`<span>${o.memo}</span>`:''}</div></div>${delBtn}</div>`;
+      const delBtn=isManual?`<button class="om-del-btn" onclick="event.stopPropagation();delManual(${o.id});openOutModal('${ds}')" title="삭제">&times;</button>`:'';
+      const dblAction=isManual?` ondblclick="editManual(${o.id})" title="더블클릭하여 수정" style="cursor:pointer;position:relative;"`:'';
+      html+=`<div class="om-item-lg"${dblAction}><div class="om-avatar">${initial}</div><div class="om-detail"><div class="om-nm-lg">${o.name}</div>${site?`<div class="om-site-lg">${site}</div>`:''}<div class="om-meta-lg">${tm?`<span>${tm}</span>`:''}${typeLabel?`<span class="om-badge-lg ${typeCls}">${typeLabel}</span>`:''}${o.memo&&o.src==='manual'?`<span>${o.memo}</span>`:''}</div></div>${delBtn}</div>`;
     });
   }
   document.getElementById('outModalBody').innerHTML=html;
@@ -1280,10 +1387,10 @@ function openDayModal(ds){
   // 헤더
   document.getElementById('outModalHeader').innerHTML=
     `<div class="om-date-badge"><div class="om-day">${d.getDate()}</div><div class="om-dow">${dayNames[d.getDay()]}요일</div></div>`+
-    `<div class="om-title-area"><div class="om-title">${d.getFullYear()}년 ${d.getMonth()+1}월 ${d.getDate()}일 근무 현황</div><div class="om-count">연차 ${vacUniqueN}명 · 반차 ${halfUniqueN}명 · 외근 ${outUniqueN}명</div></div>`;
+    `<div class="om-title-area"><div class="om-title">${d.getFullYear()}년 ${d.getMonth()+1}월 ${d.getDate()}일 근무 현황</div></div>`;
   let html='';
   // 연차 섹션
-  html+=`<div class="dm-section"><div class="dm-section-hdr"><span class="dm-section-dot vac"></span><span class="dm-section-title">연차</span><span class="dm-section-cnt">${vacUniqueN}명</span></div>`;
+  html+=`<div class="dm-section"><div class="dm-section-hdr"><span class="dm-section-dot vac"></span><span class="dm-section-title">연차</span></div>`;
   if(!vacFull.length){html+=`<div class="dm-empty">없음</div>`;}
   else{
     const byNm={};
@@ -1296,7 +1403,7 @@ function openDayModal(ds){
   }
   html+=`</div>`;
   // 반차 섹션
-  html+=`<div class="dm-section"><div class="dm-section-hdr"><span class="dm-section-dot half"></span><span class="dm-section-title">반차</span><span class="dm-section-cnt">${halfUniqueN}명</span></div>`;
+  html+=`<div class="dm-section"><div class="dm-section-hdr"><span class="dm-section-dot half"></span><span class="dm-section-title">반차</span></div>`;
   if(!allHalf.length){html+=`<div class="dm-empty">없음</div>`;}
   else{
     halfAM.forEach(v=>{
@@ -1310,7 +1417,7 @@ function openDayModal(ds){
   }
   html+=`</div>`;
   // 외근 섹션
-  html+=`<div class="dm-section"><div class="dm-section-hdr"><span class="dm-section-dot out"></span><span class="dm-section-title">외근</span><span class="dm-section-cnt">${outUniqueN}명</span></div>`;
+  html+=`<div class="dm-section"><div class="dm-section-hdr"><span class="dm-section-dot out"></span><span class="dm-section-title">외근</span></div>`;
   if(!outEvs.length){html+=`<div class="dm-empty">없음</div>`;}
   else{
     outEvs.forEach(o=>{
@@ -1324,8 +1431,9 @@ function openDayModal(ds){
       if(tm) metaParts.push(`<span>${tm}</span>`);
       if(o.memo&&o.src==='manual') metaParts.push(`<span>${o.memo}</span>`);
       const isManual=o.src==='manual';
-      const delBtn=isManual?`<button class="om-del-btn" onclick="delManual(${o.id});openDayModal('${ds}')" title="삭제">&times;</button>`:'';
-      html+=`<div class="dm-person" style="${isManual?'position:relative;':''}"><div class="dm-avatar out">${o.name.charAt(0)}</div><div class="dm-info"><div class="dm-nm">${o.name}</div>${site?`<div class="dm-site">${site}</div>`:''}${metaParts.length?`<div class="dm-desc" style="display:flex;align-items:center;gap:6px;">${metaParts.join('')}</div>`:''}</div>${delBtn}</div>`;
+      const delBtn=isManual?`<button class="om-del-btn" onclick="event.stopPropagation();delManual(${o.id});openDayModal('${ds}')" title="삭제">&times;</button>`:'';
+      const dblAction=isManual?` ondblclick="editManual(${o.id})" title="더블클릭하여 수정" style="cursor:pointer;position:relative;"`:'';
+      html+=`<div class="dm-person"${dblAction}><div class="dm-avatar out">${o.name.charAt(0)}</div><div class="dm-info"><div class="dm-nm">${o.name}</div>${site?`<div class="dm-site">${site}</div>`:''}${metaParts.length?`<div class="dm-desc" style="display:flex;align-items:center;gap:6px;">${metaParts.join('')}</div>`:''}</div>${delBtn}</div>`;
     });
   }
   html+=`</div>`;
@@ -1349,10 +1457,10 @@ function openVacModal(ds){
   const halfUniqueN=new Set(allHalf.map(v=>gn(v))).size;
   document.getElementById('outModalHeader').innerHTML=
     `<div class="om-date-badge" style="background:linear-gradient(135deg,#60A5FA,#3B82F6)"><div class="om-day">${d.getDate()}</div><div class="om-dow">${dayNames[d.getDay()]}요일</div></div>`+
-    `<div class="om-title-area"><div class="om-title">${d.getFullYear()}년 ${d.getMonth()+1}월 ${d.getDate()}일 휴가 현황</div><div class="om-count">연차 ${vacUniqueN}명 · 반차 ${halfUniqueN}명</div></div>`;
+    `<div class="om-title-area"><div class="om-title">${d.getFullYear()}년 ${d.getMonth()+1}월 ${d.getDate()}일 휴가 현황</div></div>`;
   let html='';
   // 연차
-  html+=`<div class="dm-section"><div class="dm-section-hdr"><span class="dm-section-dot vac"></span><span class="dm-section-title">연차</span><span class="dm-section-cnt">${vacUniqueN}명</span></div>`;
+  html+=`<div class="dm-section"><div class="dm-section-hdr"><span class="dm-section-dot vac"></span><span class="dm-section-title">연차</span></div>`;
   if(!vacFull.length){html+=`<div class="dm-empty">없음</div>`;}
   else{
     const byNm={};
@@ -1365,7 +1473,7 @@ function openVacModal(ds){
   }
   html+=`</div>`;
   // 반차
-  html+=`<div class="dm-section"><div class="dm-section-hdr"><span class="dm-section-dot half"></span><span class="dm-section-title">반차</span><span class="dm-section-cnt">${halfUniqueN}명</span></div>`;
+  html+=`<div class="dm-section"><div class="dm-section-hdr"><span class="dm-section-dot half"></span><span class="dm-section-title">반차</span></div>`;
   if(!allHalf.length){html+=`<div class="dm-empty">없음</div>`;}
   else{
     halfAM.forEach(v=>{
@@ -1412,9 +1520,11 @@ function doSearch(){
   const allNames=Object.values(userMap);
   foundName=allNames.find(nm=>nm.includes(q));
 
+  // 검색 시점의 최신 수동외근 데이터 사용
+  const searchManualOut=manualOut.filter(m=>m.date===todayStr);
   if(!foundName){
     // 외근자에서도 찾기
-    const outMatch=[...todaySalesOut,...todayManualOut].find(o=>o.name.includes(q));
+    const outMatch=[...todaySalesOut,...searchManualOut].find(o=>o.name.includes(q));
     if(outMatch)foundName=outMatch.name;
   }
 
@@ -1424,7 +1534,7 @@ function doSearch(){
       const nm=v.user_name||userMap[String(v.office_user_no)]||'';
       return nm===foundName;
     });
-    const outMatch=[...todaySalesOut,...todayManualOut].find(o=>o.name===foundName);
+    const outMatch=[...todaySalesOut,...searchManualOut].find(o=>o.name===foundName);
 
     const now=new Date();
     const nowHHMM=p2(now.getHours())+':'+p2(now.getMinutes());
@@ -1477,18 +1587,19 @@ function doSearch(){
     }
     // 근무시간 외 최종 체크 (근무중/외근 → 근무시간이 아닙니다, 연차는 유지)
     if(isOffHours&&(cls==='working'||cls==='out')){
-      // 외근중인 경우 시간 체크 — 현재 외근 시간 범위 안이면 외근 유지
+      // 외근 등록이 있으면 시간 범위 안이면 외근 유지, 시간 미지정이면 항상 외근 유지
       let stillOut=false;
       if(cls==='out'){
-        const allOutNow=[...todaySalesOut,...todayManualOut].filter(o=>o.name===foundName);
+        const allOutNow=[...todaySalesOut,...searchManualOut].filter(o=>o.name===foundName);
         allOutNow.forEach(o=>{
           const t=o.time||'';
-          if(t.includes('~')){
+          if(!t){
+            stillOut=true;
+          } else if(t.includes('~')){
             const[s,e]=t.split('~');
             if(s&&e&&nowHHMM>=s.trim()&&nowHHMM<=e.trim())stillOut=true;
           } else if(t.match(/^\d{1,2}:\d{2}$/)){
-            // 시작시간만 있으면 종료시간을 근무종료(17:30)로 간주
-            if(nowHHMM>=t&&nowHHMM<='17:30')stillOut=true;
+            if(nowHHMM>=t)stillOut=true;
           }
         });
       }
@@ -1500,27 +1611,29 @@ function doSearch(){
       }
     }
     // 외근+반차 동시 체크
-    const allOutMatches=[...todaySalesOut,...todayManualOut].filter(o=>o.name===foundName);
+    const allOutMatches=[...todaySalesOut,...searchManualOut].filter(o=>o.name===foundName);
     let extraOutHtml='';
     if(allOutMatches.length&&cls!=='out'){
-      const o=allOutMatches[0];
-      const oType=o.outType||'';
-      const oTm=o.time&&o.time!=='미정'?o.time:'';
-      const oSite=o.siteName||(o.memo||'');
-      const isSales=o.src==='sales';
-      const typeCls2=isSales?outTypeCls(o.outType):'mn';
-      extraOutHtml=`<div class="sr-extra"><span class="sr-extra-badge out">외근</span>${oType?`<span class="om-badge-lg ${typeCls2}">${oType}</span>`:''}${oSite?`<span class="sr-extra-site">${oSite}</span>`:''}${oTm?`<span class="sr-extra-tm">${oTm}</span>`:''}</div>`;
+      extraOutHtml=allOutMatches.map(o=>{
+        const oType=o.outType||'';
+        const oTm=o.time&&o.time!=='미정'?o.time:'';
+        const oSite=o.siteName||(o.memo||'');
+        const isSales=o.src==='sales';
+        const typeCls2=isSales?outTypeCls(o.outType):'mn';
+        return `<div class="sr-extra"><span class="sr-extra-badge out">외근</span>${oType?`<span class="om-badge-lg ${typeCls2}">${oType}</span>`:''}${oSite?`<span class="sr-extra-site">${oSite}</span>`:''}${oTm?`<span class="sr-extra-tm">${oTm}</span>`:''}</div>`;
+      }).join('');
     }
     // 외근 상세 (외근 상태일 때)
     let outDetailHtml='';
     if(cls==='out'&&allOutMatches.length){
-      const o=allOutMatches[0];
-      const isSales=o.src==='sales';
-      const typeCls2=isSales?outTypeCls(o.outType):'mn';
-      const oType=o.outType||'';
-      const oTm=o.time&&o.time!=='미정'?o.time:'';
-      const oSite=o.siteName||(o.memo||'');
-      outDetailHtml=`<div class="sr-extra">${oType?`<span class="om-badge-lg ${typeCls2}">${oType}</span>`:''}${oSite?`<span class="sr-extra-site">${oSite}</span>`:''}${oTm?`<span class="sr-extra-tm">${oTm}</span>`:''}</div>`;
+      outDetailHtml=allOutMatches.map(o=>{
+        const isSales=o.src==='sales';
+        const typeCls2=isSales?outTypeCls(o.outType):'mn';
+        const oType=o.outType||'';
+        const oTm=o.time&&o.time!=='미정'?o.time:'';
+        const oSite=o.siteName||(o.memo||'');
+        return `<div class="sr-extra">${oType?`<span class="om-badge-lg ${typeCls2}">${oType}</span>`:''}${oSite?`<span class="sr-extra-site">${oSite}</span>`:''}${oTm?`<span class="sr-extra-tm">${oTm}</span>`:''}</div>`;
+      }).join('');
     }
     const initial=foundName.charAt(0);
     const nowStamp=now.getFullYear()+'.'+p2(now.getMonth()+1)+'.'+p2(now.getDate())+' '+p2(now.getHours())+':'+p2(now.getMinutes());
