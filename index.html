@@ -477,11 +477,36 @@
 
     @media (max-width:768px) {
       .main-section { margin:8px; border-radius:10px; }
-      .top-header { padding:0 16px; }
+      .top-header { padding:8px 12px; height:auto; flex-wrap:wrap; gap:6px; }
+      .top-header h1 { font-size:0.82rem; white-space:nowrap; flex-shrink:0; }
+      .hdr-right { gap:5px; }
+      .hdr-right .sync { font-size:0.6rem; display:none; }
+      .hdr-btn { padding:4px 8px; font-size:0.68rem; white-space:nowrap; }
       .layout-side { flex-direction:column; }
       .side-d { width:100%; min-width:0; border-right:none; border-bottom:1px solid #E2E8F0; }
-      .cell { min-height:90px; }
+      .cell { min-height:70px; }
+      .dn { font-size:0.7rem; padding:4px 5px 1px; }
+      .zn3 .zl { font-size:0.45rem; }
+      .zn3 .znames { font-size:0.5rem; }
+      .hol-name { font-size:0.45rem; }
+      .search-area { padding:10px 12px 0; }
+      .search-header { padding:12px 14px 10px; gap:10px; }
+      .search-header-icon { width:32px; height:32px; border-radius:8px; }
+      .search-header-title { font-size:0.88rem; }
+      .search-header-desc { font-size:0.75rem; }
+      .search-input-row { padding:0 14px 12px; }
+      .search-input { padding:10px 36px 10px 38px; font-size:0.88rem; }
       .filter-row { flex-direction:column; align-items:flex-start; }
+      .sr-card { padding:16px 14px; gap:12px; }
+    }
+    @media (max-width:480px) {
+      .top-header h1 { font-size:0.75rem; }
+      .hdr-btn { padding:3px 6px; font-size:0.62rem; }
+      .cell { min-height:56px; }
+      .zn3 { padding:1px 4px; }
+      .zn3 .znames { font-size:0.45rem; }
+      .zn3 .zl { font-size:0.4rem; }
+      .dn { font-size:0.65rem; padding:3px 4px 1px; }
     }
   </style>
 </head>
