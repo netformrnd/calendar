@@ -1513,7 +1513,7 @@ function openDayModal(ds){
   // 연차 섹션
   // 연차 섹션
   const vacNames=new Set(vacFull.map(v=>gn(v)));
-  html+=`<div class="dm-section-wrap vac-wrap"><div class="dm-section-hdr"><span class="dm-section-dot vac"></span><span class="dm-section-title">연차</span><span class="dm-section-cnt">(${vacNames.size}명)</span></div>`;
+  html+=`<div class="dm-section-wrap vac-wrap"><div class="dm-section-hdr"><span class="dm-section-dot vac"></span><span class="dm-section-title">연차</span></div>`;
   if(!vacFull.length){html+=`<div class="dm-empty">없음</div>`;}
   else{
     const byNm={};
@@ -1527,7 +1527,7 @@ function openDayModal(ds){
   html+=`</div>`;
   // 반차 섹션
   const halfNames=new Set(allHalf.map(v=>gn(v)));
-  html+=`<div class="dm-section-wrap half-wrap"><div class="dm-section-hdr"><span class="dm-section-dot half"></span><span class="dm-section-title">반차</span><span class="dm-section-cnt">(${halfNames.size}명)</span></div>`;
+  html+=`<div class="dm-section-wrap half-wrap"><div class="dm-section-hdr"><span class="dm-section-dot half"></span><span class="dm-section-title">반차</span></div>`;
   if(!allHalf.length){html+=`<div class="dm-empty">없음</div>`;}
   else{
     halfAM.forEach(v=>{
@@ -1542,7 +1542,7 @@ function openDayModal(ds){
   html+=`</div>`;
   // 외근 섹션
   const outNames=new Set(outEvs.map(o=>o.name));
-  html+=`<div class="dm-section-wrap out-wrap"><div class="dm-section-hdr"><span class="dm-section-dot out"></span><span class="dm-section-title">외근</span><span class="dm-section-cnt">(${outNames.size}명)</span></div>`;
+  html+=`<div class="dm-section-wrap out-wrap"><div class="dm-section-hdr"><span class="dm-section-dot out"></span><span class="dm-section-title">외근</span></div>`;
   if(!outEvs.length){html+=`<div class="dm-empty">없음</div>`;}
   else{
     outEvs.forEach(o=>{
