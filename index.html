@@ -251,7 +251,9 @@
     .om-item-lg .om-detail { flex:1; }
     .om-item-lg .om-nm-lg { font-size:0.95rem; font-weight:700; color:#334155; }
     .om-item-lg .om-site-lg { font-size:0.82rem; color:#6D5EAE; font-weight:500; margin-top:2px; }
-    .om-item-lg .om-meta-lg { font-size:0.72rem; color:#94A3B8; margin-top:4px; display:flex; gap:8px; align-items:center; }
+    .om-item-lg .om-meta-lg { font-size:0.72rem; color:#94A3B8; margin-top:4px; display:flex; gap:8px; align-items:center; flex-wrap:wrap; }
+    .om-item-lg .om-memo-lg { font-size:0.78rem; color:#64748B; margin-top:2px; }
+    .om-item-lg .om-time-lg { font-size:0.82rem; color:#94A3B8; margin-left:auto; }
     .om-item-lg .om-badge-lg, .dm-person .om-badge-lg, .sr-extra .om-badge-lg { font-size:0.8rem; padding:4px 14px; border-radius:5px; font-weight:700; }
     .om-badge-lg.pt { background:rgba(59,130,246,.15); color:#3B82F6; }
     .om-badge-lg.br { background:rgba(251,191,36,.15); color:#D97706; }
@@ -297,6 +299,8 @@
     .dm-person .dm-desc { font-size:0.8rem; color:#64748B; margin-top:0; }
     .dm-person .dm-site { font-size:0.82rem; color:#6D5EAE; font-weight:500; margin-top:0; }
     .dm-person .dm-meta-row { font-size:0.76rem; color:#64748B; margin-left:auto; display:flex; gap:8px; align-items:center; }
+    .dm-person .dm-memo { font-size:0.78rem; color:#64748B; }
+    .dm-person .dm-time { font-size:0.82rem; color:#94A3B8; margin-left:auto; min-width:50px; text-align:right; }
     .dm-empty { font-size:0.78rem; color:#CBD5E1; padding:6px 0; }
 
     /* ── 이름 필터 강조 모드 ── */
@@ -1470,12 +1474,13 @@ function openOutModal(ds){
       const typeCls=isSales?outTypeCls(o.outType):'mn';
       const typeLabel=isSales?(o.outType||'영업'):'';
       const tm=o.time&&o.time!=='미정'?o.time:'';
-      const site=o.siteName||(o.memo||'');
+      const site=isSales?(o.siteName||''):(o.siteName||'');
+      const memo=(!isSales&&o.memo)?o.memo:'';
       const initial=o.name?o.name.charAt(0):'';
       const isManual=o.src==='manual';
       const delBtn=isManual?`<button class="om-del-btn" onclick="event.stopPropagation();delManual(${o.id});openOutModal('${ds}')" title="삭제">&times;</button>`:'';
       const dblAction=isManual?` ondblclick="editManual(${o.id})" title="더블클릭하여 수정" style="cursor:pointer;position:relative;"`:'';
-      html+=`<div class="om-item-lg"${dblAction}><div class="om-avatar">${initial}</div><div class="om-detail"><div class="om-nm-lg">${o.name}</div>${site?`<div class="om-site-lg">${site}</div>`:''}<div class="om-meta-lg">${tm?`<span>${tm}</span>`:''}${typeLabel?`<span class="om-badge-lg ${typeCls}">${typeLabel}</span>`:''}${o.memo&&o.src==='manual'?`<span>${o.memo}</span>`:''}</div></div>${delBtn}</div>`;
+      html+=`<div class="om-item-lg"${dblAction}><div class="om-avatar">${initial}</div><div class="om-detail"><div class="om-nm-lg">${o.name}</div>${site?`<div class="om-site-lg">${site}</div>`:''}${memo?`<div class="om-memo-lg">${memo}</div>`:''}<div class="om-meta-lg">${typeLabel?`<span class="om-badge-lg ${typeCls}">${typeLabel}</span>`:''}<span class="om-time-lg">${tm}</span></div></div>${delBtn}</div>`;
     });
   }
   document.getElementById('outModalBody').innerHTML=html;
@@ -1545,15 +1550,12 @@ function openDayModal(ds){
       const typeCls=isSales?outTypeCls(o.outType):'mn';
       const typeLabel=isSales?(o.outType||'영업'):'';
       const tm=o.time&&o.time!=='미정'?o.time:'';
-      const site=o.siteName||(o.memo||'');
-      const metaParts=[];
-      if(typeLabel) metaParts.push(`<span class="om-badge-lg ${typeCls}">${typeLabel}</span>`);
-      if(tm) metaParts.push(`<span>${tm}</span>`);
-      if(o.memo&&o.src==='manual') metaParts.push(`<span>${o.memo}</span>`);
+      const site=isSales?(o.siteName||''):(o.siteName||'');
+      const memo=(!isSales&&o.memo)?o.memo:'';
       const isManual=o.src==='manual';
       const delBtn=isManual?`<button class="om-del-btn" onclick="event.stopPropagation();delManual(${o.id});openDayModal('${ds}')" title="삭제" style="position:relative;">&times;</button>`:'';
       const dblAction=isManual?` ondblclick="editManual(${o.id})" title="더블클릭하여 수정" style="cursor:pointer;"`:'';
-      html+=`<div class="dm-person"${dblAction}><div class="dm-info-row"><div class="dm-nm">${o.name}</div>${site?`<div class="dm-site">${site}</div>`:''}<div class="dm-meta-row">${metaParts.join('')}</div></div>${delBtn}</div>`;
+      html+=`<div class="dm-person"${dblAction}><div class="dm-info-row"><div class="dm-nm">${o.name}</div>${site?`<div class="dm-site">${site}</div>`:''}${memo?`<div class="dm-memo">${memo}</div>`:''}${typeLabel?`<span class="om-badge-lg ${typeCls}">${typeLabel}</span>`:''}<div class="dm-time">${tm}</div></div>${delBtn}</div>`;
     });
   }
   html+=`</div>`;
