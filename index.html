@@ -732,7 +732,7 @@ async function loadData(){
       db.ref('/hiworks_vacation_sync/users').once('value'),
       db.ref('/hiworks_vacation_sync/holidays/'+key).once('value'),
       db.ref('/hiworks_vacation_sync/meta/lastSync').once('value'),
-      db.ref('/sq_vc/leaves').once('value'),
+      db.ref('/sq_vc_shared/users').once('value'),
       db.ref('/manual_outside').once('value')
     ];
     if(todayKey!==key) corePromises.push(db.ref('/hiworks_vacation_sync/data/'+todayKey).once('value'));
@@ -765,12 +765,20 @@ async function loadData(){
     Object.entries(koHolidays).forEach(([d,n])=>{if(!holidayMap[d])holidayMap[d]=n;});
     const mp=`${cY}-${p2(cM)}`;
 
-    // sq_vc 연차 데이터 병합
-    const sqVcData=sqVcSnap.val()||{};
-    Object.entries(sqVcData).forEach(([date,arr])=>{
-      if(!Array.isArray(arr))return;
+    // sq_vc 연차 데이터 병합 (sq_vc_shared/users 구조)
+    const sqVcUsers=sqVcSnap.val()||[];
+    const sqVcLeaves={};
+    (Array.isArray(sqVcUsers)?sqVcUsers:[]).forEach(user=>{
+      if(!user||!user.leaves)return;
+      Object.entries(user.leaves).forEach(([date,info])=>{
+        if(!sqVcLeaves[date])sqVcLeaves[date]=[];
+        sqVcLeaves[date].push({name:user.name,type:info.type,status:info.status});
+      });
+    });
+    Object.entries(sqVcLeaves).forEach(([date,arr])=>{
       arr.forEach(item=>{
-        const vType=item.type==='full'?'연차':item.type==='half'?'반차':item.type==='quarter'?'반반차':(item.label||'연차');
+        if(item.status==='cancelled')return;
+        const vType=item.type==='full'?'연차':item.type==='half'?'반차':item.type==='quarter'?'반반차':'연차';
         vacData.push({date:date, user_name:item.name, type_name:vType, src:'sq_vc'});
       });
     });
@@ -783,13 +791,13 @@ async function loadData(){
     if(todayKey!==key&&coreResults[6]){
       todayVacSource=coreResults[6].val()||[];
       // 다른 월 조회 시에도 sq_vc 데이터를 오늘 휴가에 포함
-      Object.entries(sqVcData).forEach(([date,arr])=>{
-        if(!Array.isArray(arr)||date!==todayStr)return;
-        arr.forEach(item=>{
-          const vType=item.type==='full'?'연차':item.type==='half'?'반차':item.type==='quarter'?'반반차':(item.label||'연차');
-          todayVacSource.push({date:date, user_name:item.name, type_name:vType, src:'sq_vc'});
+      if(sqVcLeaves[todayStr]){
+        sqVcLeaves[todayStr].forEach(item=>{
+          if(item.status==='cancelled')return;
+          const vType=item.type==='full'?'연차':item.type==='half'?'반차':item.type==='quarter'?'반반차':'연차';
+          todayVacSource.push({date:todayStr, user_name:item.name, type_name:vType, src:'sq_vc'});
         });
-      });
+      }
     }
     todayVacList=(Array.isArray(todayVacSource)?todayVacSource:[]).filter(v=>v.date===todayStr);
     todayManualOut=manualOut.filter(m=>m.date===todayStr);
